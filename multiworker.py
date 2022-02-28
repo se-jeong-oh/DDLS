@@ -5,15 +5,35 @@ import tensorflow as tf
 import numpy as np
 import datetime
 
-# every worker has different index, and same worker list
-tf_config = {
-    'cluster': {
-        'worker': ['xxx.xxx.xxx.xxx:50000', 'yyy.yyy.yyy.yyy:50000']
-    },
-    'task': {'type': 'worker', 'index': 1}
-}
-os.environ['TF_CONFIG'] = json.dumps(tf_config)
+tf_config = {"cluster": {"worker": ["163.239.22.28:12345", "163.239.27.109:12345"]}, "task": {"index": 0, "type": "worker"}}
+os.environ['TF_CONFIG']=json.dumps(tf_config)
+#os.environ['GRPC_TRACE']='all'
+os.environ['GRPC_VERBOSITY']='DEBUG'
+#os.environ['GRPC_GO_LOG_SEVERITY_LEVEL']='info'
+#os.environ['GRPC_GO_LOG_VERBOSITY_LEVEL']='2'
+#os.environ['CGO_ENABLED']='1'
+#os.environ['GRPC_TRACE']='http,api,client_channel_routing'
+#os.environ['NCCL_DEBUG']='INFO'
+
+tf.debugging.set_log_device_placement(True)
 cluster_resolver = tf.distribute.cluster_resolver.TFConfigClusterResolver()
+implementation = tf.distribute.experimental.CommunicationImplementation.NCCL
+communication_options = tf.distribute.experimental.CommunicationOptions(implementation=implementation)
+strategy = tf.distribute.MultiWorkerMirroredStrategy(cluster_resolver=cluster_resolver, communication_options=communication_options)
+
+# every worker has different index, and same worker list
+# tf_config = {
+#    'cluster': {
+#        'worker': ['163.239.27.109:50000', '163.239.22.28:50000']
+#    },
+#    'task': {'type': 'worker', 'index': 0}
+#}
+#os.environ['TF_CONFIG'] = json.dumps(tf_config)
+#cluster_resolver = tf.distribute.cluster_resolver.TFConfigClusterResolver()
+
+#log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+#tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+
 def mnist_dataset(batch_size):
   (x_train, y_train), _ = tf.keras.datasets.mnist.load_data()
   # The `x` arrays are in uint8 and have values in the [0, 255] range.
@@ -46,11 +66,8 @@ def build_and_compile_cnn_model():
 
 # multi worker test
 per_worker_batch_size = 64
-#tf_config = json.loads(os.environ['TF_CONFIG'])
+tf_config = json.loads(os.environ['TF_CONFIG'])
 num_workers = len(tf_config['cluster']['worker'])
-
-strategy = tf.distribute.MultiWorkerMirroredStrategy(cluster_resolver=cluster_resolver)
-
 global_batch_size = per_worker_batch_size * num_workers
 multi_worker_dataset = mnist_dataset(global_batch_size)
 
@@ -61,3 +78,5 @@ with strategy.scope():
 #multi_worker_dataset = strategy.distribute_datasets_from_function(multi_worker_dataset)
 
 multi_worker_model.fit(multi_worker_dataset, epochs=100, steps_per_epoch=70)
+
+
