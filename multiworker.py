@@ -3,6 +3,9 @@ import os
 import tensorflow as tf
 import numpy as np
 import datetime
+import math
+import time
+from tensorflow.keras.utils import Sequence
 from keras.layers import *
 from keras.models import *
 from keras.utils import *
@@ -12,7 +15,7 @@ tf_config = {
     'cluster': {
         'worker': ['163.239.27.109:50000', '163.239.22.28:50000']
     },
-    'task': {'type': 'worker', 'index': 1}
+    'task': {'type': 'worker', 'index': 0}
 }
 os.environ['TF_CONFIG'] = json.dumps(tf_config)
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
@@ -33,9 +36,34 @@ def cifar10_dataset(batch_size):
   # You need to convert them to float32 with values in the [0, 1] range.
   x_train = x_train / np.float32(255)
   y_train = y_train.astype(np.int64)
-  train_dataset = tf.data.Dataset.from_tensor_slices(
-      (x_train, y_train)).shuffle(60000).repeat().batch(batch_size)
-  return train_dataset
+  #train_dataset = tf.data.Dataset.from_tensor_slices(
+  #    (x_train, y_train)).shuffle(60000).repeat().batch(batch_size)
+  return (x_train, y_train)
+
+class CIFAR10Sequence(Sequence):
+
+    def __init__(self, x_set, y_set, batch_size, shuffle=False):
+        self.x, self.y = x_set, y_set
+        self.batch_size = batch_size
+        self.shuffle=shuffle
+        self.on_epoch_end()
+
+    def __len__(self):
+        return math.ceil(len(self.x) / self.batch_size)
+
+    def __getitem__(self, idx):
+        start_time = time.time()
+        batch_x = self.x[idx * self.batch_size:(idx + 1) *
+        self.batch_size]
+        batch_y = self.y[idx * self.batch_size:(idx + 1) *
+        self.batch_size]
+        print("\nData Input Time: (us)", (time.time()-start_time)*1000000)
+        return np.array(batch_x), np.array(batch_y)
+    
+    def on_epoch_end(self):
+      self.indices = np.arange(len(self.x))
+      if self.shuffle == True:
+        np.random.shuffle(self.indices)
 
 def build_and_compile_cnn_model():
   model = Sequential()
@@ -66,7 +94,8 @@ num_workers = len(tf_config['cluster']['worker'])
 strategy = tf.distribute.MultiWorkerMirroredStrategy()
 
 global_batch_size = per_worker_batch_size * num_workers
-multi_worker_dataset = cifar10_dataset(global_batch_size)
+multi_worker_dataset_x, multi_worker_dataset_y = cifar10_dataset(global_batch_size)
+train_loader = CIFAR10Sequence(multi_worker_dataset_x,multi_worker_dataset_y,global_batch_size,shuffle=True)
 
 with strategy.scope():
   # Model building/compiling need to be within `strategy.scope()`.
@@ -74,4 +103,4 @@ with strategy.scope():
 
 #multi_worker_dataset = strategy.distribute_datasets_from_function(multi_worker_dataset)
 
-multi_worker_model.fit(multi_worker_dataset, epochs=10, steps_per_epoch=70, callbacks=[tensorboard_callback])
+multi_worker_model.fit(train_loader, epochs=10, steps_per_epoch=70, callbacks=[tensorboard_callback])
