@@ -103,4 +103,4 @@ with strategy.scope():
 
 #multi_worker_dataset = strategy.distribute_datasets_from_function(multi_worker_dataset)
 
-multi_worker_model.fit(train_loader, epochs=10, steps_per_epoch=70, callbacks=[tensorboard_callback])
+multi_worker_model.fit(train_loader, epochs=10, verbose=0, callbacks=[tensorboard_callback])
